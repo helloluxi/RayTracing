@@ -1,5 +1,3 @@
-cd build 
-cmake ..
-cd ..
+cmake -B build
 cmake --build build 
-./build/rt
+./build/render
