@@ -69,18 +69,6 @@
             "materialId": 2
         }
     ],
-    "spheres":[
-        {
-            "center": [4, 0, 3],
-            "r": 3,
-            "materialId": 3
-        },
-        {
-            "center": [-4, 4, 3],
-            "r": 3,
-            "materialId": 4
-        }
-    ],
     "areaLight":{
         "center": [0, 0, 9.99],
         "intensity": [5, 5, 5],
@@ -88,5 +76,14 @@
         "right": [1, 0, 0],
         "up": [0, 1, 0],
         "size": 5
-    }
+    },
+    "meshes":[
+        {
+            "path": "monkey.obj",
+            "scale": 1,
+            "position": [0, 0, 0],
+            "rotation": [1, 0, 0, 0],
+            "materialId": 3
+        }
+    ]
 }

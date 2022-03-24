@@ -59,24 +59,37 @@ struct Shader {
             * 4 * (NoL * (1 - k) + k) * (NoV * (1 - k) + k)) + (1 - metallic)) / PI * albedo;
     }
 };
-// struct Triangle {
-//     float3 a, b, c, n;
-//     int materialId;
-//     Triangle(float3 a, float3 b, float3 c, int materialId) : a(a), b(b), c(c), n(cross(b - a, c - a)), materialId(materialId) {}
-//     __device__ Intersect getIntersection(Ray* ray) {
-//         Intersect intersect{};
-//         float3 ac = c - a, ab = b - a, ao = ray->origin - a, pvec = cross(ray->direction, ac), qvec = cross(ao, ab);
-//         float inv_det = 1.f / dot(ab, pvec), u = dot(ao, pvec) * inv_det, v = dot(ray->direction, qvec) * inv_det;
-//         if (dot(ray->direction, n) > 0 || u < 0 || v < 0 || u + v > 1)
-//             return intersect;
-//         intersect.exist = true;
-//         intersect.point = a + ab * v + ac * u;
-//         intersect.normal = n;
-//         intersect.distance = dot(ao, n);
-//         intersect.materialId = materialId;
-//         return intersect;
-//     }
-// };
+struct TriangleMesh {
+    float3* vertices, *normals;
+    int* triangles, *triangleNormals;
+    int vertexCount, triangleCount;
+    int materialId;
+    __device__ Intersect getIntersection(Ray* ray) {
+        Intersect intersect{ false, __FLT_MAX__ };
+        for(int i = 0; i < triangleCount; i++){
+            float3 a = vertices[triangles[i * 3]],
+                ab = vertices[triangles[i * 3 + 1]] - a, 
+                ac = vertices[triangles[i * 3 + 2]] - a, 
+                ao = ray->origin - a,
+                areaVec = cross(ab, ac),
+                n = normalize(areaVec);
+            float det = dot(areaVec, ray->direction),
+                inv_det = 1.f / det,
+                distance = dot(areaVec, ao) * -inv_det,
+                u = dot(cross(ao, ac), ray->direction) * inv_det,
+                v = dot(cross(ab, ao), ray->direction) * inv_det;
+            if (det != 0 && u >= 0 && v >= 0 && u + v <= 1 && distance < intersect.distance){
+                intersect.exist = true;
+                intersect.point = a + ab * u + ac * v;
+                intersect.normal = normalize(normals[triangleNormals[i * 3]] * (1 - u - v) 
+                    + normals[triangleNormals[i * 3 + 1]] * v + normals[triangleNormals[i * 3 + 2]] * v);
+                intersect.distance = distance;
+                intersect.materialId = materialId;
+            }
+        }
+        return intersect;
+    }
+};
 struct Plane {
     float3 point, normal;
     int materialId;
@@ -158,9 +171,9 @@ struct Scene
     Plane* planes;
     Sphere* spheres;
     AreaLight* light;
-    // Triangle* triangles;
+    TriangleMesh* meshes;
     bool useLightSampling;
-    int materialCount, planeCount, sphereCount/*, triangleCount*/;
+    int materialCount, planeCount, sphereCount, meshCount;
     Texture* envPX, * envPY, * envPZ, * envMX, * envMY, * envMZ;
     __device__ Intersect findIntersection(Ray* ray) {
         Intersect current{
@@ -184,12 +197,12 @@ struct Scene
             if (intersect.exist && intersect.distance < current.distance)
                 current = intersect;
         }
-        // for (int i = 0; i < this->triangleCount; ++i)
-        // {
-        //     auto intersect = this->triangles[i].getIntersection(ray);
-        //     if (intersect.exist && intersect.distance < current.distance)
-        //         current = intersect;
-        // }
+        for (int i = 0; i < this->meshCount; ++i)
+        {
+            auto intersect = this->meshes[i].getIntersection(ray);
+            if (intersect.exist && intersect.distance < current.distance)
+                current = intersect;
+        }
         return current;
     }
     __device__ float3 sampleEnvironment(float3 dir) {
@@ -215,6 +228,7 @@ __device__ float3 trace(Ray* primaryRay, Scene* scene, curandState* rd, int maxD
     float3 scale = make_float3(1), color{};
     for (int depth = 0; depth < maxDepth; ++depth) {
         intersect = scene->findIntersection(&ray);
+        // return intersect.normal * 0.5f + 0.5f;
         if (!intersect.exist) {
             if(!scene->useLightSampling)
                 color += scale * scene->sampleEnvironment(ray.direction);
